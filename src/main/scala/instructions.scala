@@ -243,6 +243,8 @@ object CSRs {
   val reset = 0x51d
   val tohost = 0x51e
   val fromhost = 0x51f
+  val raven3p5_to_pcu = 0x520
+  val raven3p5_from_pcu = 0x521
   val cycle = 0xc00
   val time = 0xc01
   val instret = 0xc02
@@ -291,6 +293,8 @@ object CSRs {
     res += reset
     res += tohost
     res += fromhost
+    res += raven3p5_to_pcu
+    res += raven3p5_from_pcu
     res += cycle
     res += time
     res += instret

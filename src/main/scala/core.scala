@@ -38,7 +38,7 @@ abstract trait RocketCoreParameters extends CoreParameters
 abstract class CoreBundle extends Bundle with CoreParameters
 abstract class CoreModule extends Module with CoreParameters
 
-class RocketIO extends Bundle
+class RocketIO extends RavenBundle
 {
   val host =  new HTIFIO
   val imem = new CPUFrontendIO
@@ -75,4 +75,6 @@ class Core extends Module with CoreParameters
 
   ctrl.io.rocc <> io.rocc
   dpath.io.rocc <> io.rocc
+
+  io.raven3p5_regs <> dpath.io.raven3p5_regs
 }

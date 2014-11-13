@@ -9,7 +9,7 @@ import uncore._
 
 class Datapath extends Module
 {
-  val io = new Bundle {
+  val io = new RavenBundle {
     val host  = new HTIFIO
     val ctrl  = new CtrlDpathIO().flip
     val dmem = new HellaCacheIO
@@ -299,4 +299,6 @@ class Datapath extends Module
          wb_reg_inst(19,15), Reg(next=Reg(next=ex_rs(0))),
          wb_reg_inst(24,20), Reg(next=Reg(next=ex_rs(1))),
          wb_reg_inst, wb_reg_inst)
+
+  io.raven3p5_regs <> pcr.io.raven3p5_regs
 }

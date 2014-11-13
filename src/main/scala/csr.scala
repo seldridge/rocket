@@ -34,7 +34,14 @@ object CSR
   val C =  Bits(3,2)
 }
 
-class CSRFileIO extends Bundle {
+class RavenBundle extends Bundle {
+  val raven3p5_regs = new Bundle {
+    val to_pcu = Bits(OUTPUT, 32)
+    val from_pcu = Bits(INPUT, 32)
+  }
+}
+
+class CSRFileIO extends RavenBundle {
   val host = new HTIFIO
   val rw = new Bundle {
     val addr = UInt(INPUT, 12)
@@ -74,6 +81,7 @@ class CSRFile extends Module
   val reg_fromhost = Reg(init=Bits(0, params(XprLen)))
   val reg_sup0 = Reg(Bits(width = params(XprLen)))
   val reg_sup1 = Reg(Bits(width = params(XprLen)))
+  val reg_raven3p5_to_pcu = Reg(init=Bits(0, 32))
   val reg_ptbr = Reg(UInt(width = params(PAddrBits)))
   val reg_stats = Reg(init=Bool(false))
   val reg_status = Reg(new Status) // reset down below
@@ -170,6 +178,8 @@ class CSRFile extends Module
     CSRs.instret -> reg_instret,
     CSRs.sup0 -> reg_sup0,
     CSRs.sup1 -> reg_sup1,
+    CSRs.raven3p5_to_pcu -> reg_raven3p5_to_pcu,
+    CSRs.raven3p5_from_pcu -> Reg(next=Reg(next=io.raven3p5_regs.from_pcu)),
     CSRs.epc -> reg_epc,
     CSRs.badvaddr -> reg_badvaddr,
     CSRs.ptbr -> read_ptbr,
@@ -220,6 +230,7 @@ class CSRFile extends Module
     when (decoded_addr(CSRs.clear_ipi)){ r_irq_ipi := wdata(0) }
     when (decoded_addr(CSRs.sup0))     { reg_sup0 := wdata }
     when (decoded_addr(CSRs.sup1))     { reg_sup1 := wdata }
+    when (decoded_addr(CSRs.raven3p5_to_pcu)) { reg_raven3p5_to_pcu := wdata }
     when (decoded_addr(CSRs.ptbr))     { reg_ptbr := Cat(wdata(params(PAddrBits)-1, params(PgIdxBits)), Bits(0, params(PgIdxBits))).toUInt }
     when (decoded_addr(CSRs.stats))    { reg_stats := wdata(0) }
   }
@@ -241,4 +252,6 @@ class CSRFile extends Module
     reg_status.im := 0
     reg_status.ip := 0
   }
+
+  io.raven3p5_regs.to_pcu := reg_raven3p5_to_pcu
 }

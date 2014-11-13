@@ -13,7 +13,7 @@ case object NPTWPorts extends Field[Int]
 case object BuildRoCC extends Field[Option[() => RoCC]]
 
 abstract class Tile(resetSignal: Bool = null) extends Module(_reset = resetSignal) {
-  val io = new Bundle {
+  val io = new RavenBundle {
     val tilelink = new TileLinkIO
     val host = new HTIFIO
   }
@@ -68,4 +68,5 @@ class RocketTile(resetSignal: Bool = null) extends Tile(resetSignal) {
   io.tilelink.release.bits := dcache.io.mem.release.bits
   io.tilelink.release.bits.payload.client_xact_id :=  Cat(dcache.io.mem.release.bits.payload.client_xact_id, UInt(dcPortId, log2Up(params(NTilePorts))))
 
+  io.raven3p5_regs <> core.io.raven3p5_regs
 }

@@ -169,6 +169,9 @@ class CSRFile extends Module
   val read_impl = Bits(2)
   val read_ptbr = reg_ptbr(params(PAddrBits)-1, params(PgIdxBits)) << UInt(params(PgIdxBits))
 
+  val from_pcu_sync_stage1 = Reg(next=io.raven3p5_regs.from_pcu)
+  val from_pcu_sync_stage2 = Reg(next=from_pcu_sync_stage1)
+
   val read_mapping = collection.mutable.LinkedHashMap[Int,Bits](
     CSRs.fflags -> (if (!params(BuildFPU).isEmpty) reg_fflags else UInt(0)),
     CSRs.frm -> (if (!params(BuildFPU).isEmpty) reg_frm else UInt(0)),
@@ -179,7 +182,7 @@ class CSRFile extends Module
     CSRs.sup0 -> reg_sup0,
     CSRs.sup1 -> reg_sup1,
     CSRs.raven3p5_to_pcu -> reg_raven3p5_to_pcu,
-    CSRs.raven3p5_from_pcu -> Reg(next=Reg(next=io.raven3p5_regs.from_pcu)),
+    CSRs.raven3p5_from_pcu -> from_pcu_sync_stage2,
     CSRs.epc -> reg_epc,
     CSRs.badvaddr -> reg_badvaddr,
     CSRs.ptbr -> read_ptbr,

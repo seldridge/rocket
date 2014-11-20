@@ -1,6 +1,10 @@
 Rocket Core
 ===========
 
+This branch of Rocket is modified to interact with Xilinx TEMAC IP through CSRs.
+
+-----------------------------------------------------------------------------
+
 Rocket is a 6-stage single-issue in-order pipeline that executes the 64-bit
 scalar RISC-V ISA.  Rocket implements an MMU that supports page-based virtual
 memory and is able to boot modern operating systems such as Linux.  Rocket

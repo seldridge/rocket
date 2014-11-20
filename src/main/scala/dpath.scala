@@ -17,6 +17,7 @@ class Datapath extends Module
     val imem  = new CPUFrontendIO
     val fpu = new DpathFPUIO
     val rocc = new RoCCInterface().flip
+    val temac = new TEMACIO
   }
 
   // execute definitions
@@ -184,6 +185,8 @@ class Datapath extends Module
   pcr.io.pc := wb_reg_pc
   io.ctrl.csr_replay := pcr.io.replay
   pcr.io.uarch_counters.foreach(_ := Bool(false))
+
+  io.temac <> pcr.io.temac
 
   io.ptw.ptbr := pcr.io.ptbr
   io.ptw.invalidate := pcr.io.fatc

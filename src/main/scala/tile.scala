@@ -16,6 +16,7 @@ abstract class Tile(resetSignal: Bool = null) extends Module(_reset = resetSigna
   val io = new Bundle {
     val tilelink = new TileLinkIO
     val host = new HTIFIO
+    val temac = new TEMACIO
   }
 }
 
@@ -37,6 +38,8 @@ class RocketTile(resetSignal: Bool = null) extends Tile(resetSignal) {
   core.io.host <> io.host
   core.io.imem <> icache.io.cpu
   core.io.ptw <> ptw.io.dpath
+
+  io.temac <> core.io.temac
 
   val memArb = Module(new UncachedTileLinkIOArbiterThatAppendsArbiterId(params(NTilePorts)))
   val dcPortId = 0

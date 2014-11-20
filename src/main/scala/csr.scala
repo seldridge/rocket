@@ -43,6 +43,8 @@ class CSRFileIO extends Bundle {
     val wdata = Bits(INPUT, params(XprLen))
   }
 
+  val temac = new TEMACIO
+
   val status = new Status().asOutput
   val ptbr = UInt(OUTPUT, params(PAddrBits))
   val evec = UInt(OUTPUT, params(VAddrBits)+1)
@@ -72,6 +74,12 @@ class CSRFile extends Module
   val reg_cause = Reg(Bits(width = params(XprLen)))
   val reg_tohost = Reg(init=Bits(0, params(XprLen)))
   val reg_fromhost = Reg(init=Bits(0, params(XprLen)))
+  // TEMAC
+
+  val reg_cfga = Reg(init=Bits(0, 64))
+  val reg_cfgd = Reg(init=Bits(0, 64))
+  val reg_txd = Reg(init=Bits(0, 64))
+
   val reg_sup0 = Reg(Bits(width = params(XprLen)))
   val reg_sup1 = Reg(Bits(width = params(XprLen)))
   val reg_ptbr = Reg(UInt(width = params(PAddrBits)))
@@ -86,6 +94,68 @@ class CSRFile extends Module
   val r_irq_timer = Reg(init=Bool(false))
   val r_irq_ipi = Reg(init=Bool(true))
   val irq_rocc = Bool(!params(BuildRoCC).isEmpty) && io.rocc.interrupt
+
+  val temac_manage = Module(new ManagementMachine)
+  val temac_transmit = Module(new TransmitMachine)
+  val temac_receive = Module(new ReceiveMachine)
+
+  // defaults TEMAC
+  temac_receive.io.rx_axis_fifo_tdata := io.temac.rx_axis_fifo_tdata
+  temac_receive.io.rx_axis_fifo_tvalid := io.temac.rx_axis_fifo_tvalid
+  io.temac.rx_axis_fifo_tready := temac_receive.io.rx_axis_fifo_tready
+  temac_receive.io.rx_axis_fifo_tlast := io.temac.rx_axis_fifo_tlast
+
+  // defaults for rxd_val_in and rxd_val_in_valid
+  temac_receive.io.rxd_val_in := UInt(0, 64)
+  temac_receive.io.rxd_val_in_valid := UInt(0)
+
+  io.temac.tx_axis_fifo_tdata := temac_transmit.io.tx_axis_fifo_tdata
+  io.temac.tx_axis_fifo_tvalid := temac_transmit.io.tx_axis_fifo_tvalid
+  io.temac.tx_axis_fifo_tlast := temac_transmit.io.tx_axis_fifo_tlast
+
+  // default, assigned inside whens below
+  temac_transmit.io.write_to_txd := UInt(0)
+  temac_transmit.io.txd_in := reg_txd
+  temac_transmit.io.tx_axis_fifo_tready := io.temac.tx_axis_fifo_tready
+
+  // TODO stall
+
+  temac_manage.io.write_to_cfga := UInt(0) // assigned inside whens below
+  temac_manage.io.cfgd_in := reg_cfgd
+
+  // issue write addr
+  io.temac.s_axi_awaddr := reg_cfga(11, 0)
+  io.temac.s_axi_awvalid := temac_manage.io.s_axi_awvalid
+  temac_manage.io.s_axi_awready := io.temac.s_axi_awready
+
+  // issue write data
+  io.temac.s_axi_wdata := reg_cfgd(31, 0)
+  io.temac.s_axi_wvalid := temac_manage.io.s_axi_wvalid
+  temac_manage.io.s_axi_wready := io.temac.s_axi_wready
+
+  // write confirm response
+  temac_manage.io.s_axi_bresp := io.temac.s_axi_bresp
+  temac_manage.io.s_axi_bvalid := io.temac.s_axi_bvalid
+  io.temac.s_axi_bready := temac_manage.io.s_axi_bready
+
+  // read issue addr
+  io.temac.s_axi_araddr := reg_cfga(11, 0)
+  io.temac.s_axi_arvalid := temac_manage.io.s_axi_arvalid
+  temac_manage.io.s_axi_arready := io.temac.s_axi_arready
+
+  // read response
+  temac_manage.io.s_axi_rdata := io.temac.s_axi_rdata // TODO actually do read into cfgd
+
+  when (io.temac.s_axi_rvalid) {
+    // actually capture the read value
+    reg_cfgd := io.temac.s_axi_rdata
+  }
+
+  temac_manage.io.s_axi_rresp := io.temac.s_axi_rresp
+  temac_manage.io.s_axi_rvalid := io.temac.s_axi_rvalid
+  io.temac.s_axi_rready := temac_manage.io.s_axi_rready
+
+  // end TEMAC
 
   val cpu_req_valid = io.rw.cmd != CSR.N
   val host_pcr_req_valid = Reg(Bool()) // don't reset
@@ -119,8 +189,11 @@ class CSRFile extends Module
   val wen = cpu_req_valid || host_pcr_req_fire && host_pcr_bits.rw
   val wdata = Mux(cpu_req_valid, io.rw.wdata, host_pcr_bits.data)
 
+  val r_rx_axis_fifo_tvalid = Reg(init=UInt(0))
+  r_rx_axis_fifo_tvalid := io.temac.rx_axis_fifo_tvalid
+
   io.status := reg_status
-  io.status.ip := Cat(r_irq_timer, reg_fromhost.orR, r_irq_ipi,   Bool(false),
+  io.status.ip := Cat(r_irq_timer, reg_fromhost.orR, r_irq_ipi, r_rx_axis_fifo_tvalid,
                       Bool(false), irq_rocc,         Bool(false), Bool(false))
   io.fatc := wen && decoded_addr(CSRs.fatc)
   io.evec := Mux(io.exception, reg_evec.toSInt, reg_epc).toUInt
@@ -186,7 +259,12 @@ class CSRFile extends Module
     CSRs.clear_ipi -> read_impl, // don't care
     CSRs.stats -> reg_stats,
     CSRs.tohost -> reg_tohost,
-    CSRs.fromhost -> reg_fromhost)
+    CSRs.fromhost -> reg_fromhost,
+    CSRs.cfga -> reg_cfga,
+    CSRs.cfgd -> reg_cfgd,
+    CSRs.txd -> reg_txd,
+    CSRs.rxd -> temac_receive.io.rxd_val
+  )
 
   for (i <- 0 until reg_uarch_counters.size)
     read_mapping += (CSRs.uarch0 + i) -> reg_uarch_counters(i)
@@ -197,6 +275,8 @@ class CSRFile extends Module
   when (io.fcsr_flags.valid) {
     reg_fflags := reg_fflags | io.fcsr_flags.bits
   }
+
+
 
   when (wen) {
     when (decoded_addr(CSRs.status)) {
@@ -217,6 +297,23 @@ class CSRFile extends Module
     when (decoded_addr(CSRs.compare))  { reg_compare := wdata(31,0).toUInt; r_irq_timer := Bool(false) }
     when (decoded_addr(CSRs.fromhost)) { when (reg_fromhost === UInt(0) || !host_pcr_req_fire) { reg_fromhost := wdata } }
     when (decoded_addr(CSRs.tohost))   { when (reg_tohost === UInt(0) || host_pcr_req_fire) { reg_tohost := wdata } }
+    // TEMAC
+    when (decoded_addr(CSRs.cfgd))     { reg_cfgd := wdata } // writes to cfgd do nothing special
+    when (decoded_addr(CSRs.cfga))     { 
+      reg_cfga := wdata 
+      temac_manage.io.write_to_cfga := UInt(1) // start the axi state machine
+    } // writes to cfga 
+
+    when (decoded_addr(CSRs.txd))      {
+      reg_txd := wdata
+      temac_transmit.io.write_to_txd := UInt(1)
+    }
+
+    when (decoded_addr(CSRs.rxd))      {
+      temac_receive.io.rxd_val_in := wdata
+      temac_receive.io.rxd_val_in_valid := UInt(1)
+    }
+
     when (decoded_addr(CSRs.clear_ipi)){ r_irq_ipi := wdata(0) }
     when (decoded_addr(CSRs.sup0))     { reg_sup0 := wdata }
     when (decoded_addr(CSRs.sup1))     { reg_sup1 := wdata }

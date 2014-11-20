@@ -243,6 +243,12 @@ object CSRs {
   val reset = 0x51d
   val tohost = 0x51e
   val fromhost = 0x51f
+  // TEMAC
+  val txd = 0x520
+  val rxd = 0x521
+  val cfga = 0x522
+  val cfgd = 0x523
+  // END TEMAC
   val cycle = 0xc00
   val time = 0xc01
   val instret = 0xc02
@@ -291,6 +297,12 @@ object CSRs {
     res += reset
     res += tohost
     res += fromhost
+    // TEMAC
+    res += txd
+    res += rxd
+    res += cfga
+    res += cfgd
+    // END TEMAC
     res += cycle
     res += time
     res += instret

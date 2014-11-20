@@ -45,6 +45,7 @@ class RocketIO extends Bundle
   val dmem = new HellaCacheIO
   val ptw = new DatapathPTWIO().flip
   val rocc = new RoCCInterface().flip
+  val temac = new TEMACIO
 }
 
 class Core extends Module with CoreParameters
@@ -75,4 +76,6 @@ class Core extends Module with CoreParameters
 
   ctrl.io.rocc <> io.rocc
   dpath.io.rocc <> io.rocc
+
+  io.temac <> dpath.io.temac
 }

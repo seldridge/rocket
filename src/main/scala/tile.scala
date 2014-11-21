@@ -17,6 +17,7 @@ abstract class Tile(resetSignal: Bool = null) extends Module(_reset = resetSigna
     val tilelink = new TileLinkIO
     val host = new HTIFIO
     val temac = new TEMACIO
+    val rocc = new RoCCInterface().flip
   }
 }
 
@@ -46,20 +47,16 @@ class RocketTile(resetSignal: Bool = null) extends Tile(resetSignal) {
   memArb.io.in(dcPortId) <> dcache.io.mem
   memArb.io.in(1) <> icache.io.mem
 
-  //If so specified, build an RoCC module and wire it in
-  params(BuildRoCC)
-    .map { br => br() }
-    .foreach { rocc =>
-      val dcIF = Module(new SimpleHellaCacheIF)
-      core.io.rocc <> rocc.io
-      dcIF.io.requestor <> rocc.io.mem
-      dcArb.io.requestor(2) <> dcIF.io.cache
-      memArb.io.in(2) <> rocc.io.imem
-      ptw.io.requestor(2) <> rocc.io.iptw
-      ptw.io.requestor(3) <> rocc.io.dptw
-      ptw.io.requestor(4) <> rocc.io.pptw
-    }
- 
+  // wire RoCC connections to port
+  val dcIF = Module(new SimpleHellaCacheIF)
+  core.io.rocc <> io.rocc
+  dcIF.io.requestor <> io.rocc.mem
+  dcArb.io.requestor(2) <> dcIF.io.cache
+  memArb.io.in(2) <> io.rocc.imem
+  ptw.io.requestor(2) <> io.rocc.iptw
+  ptw.io.requestor(3) <> io.rocc.dptw
+  ptw.io.requestor(4) <> io.rocc.pptw
+
   io.tilelink.acquire <> memArb.io.out.acquire
   io.tilelink.grant <> memArb.io.out.grant
   io.tilelink.finish <> memArb.io.out.finish

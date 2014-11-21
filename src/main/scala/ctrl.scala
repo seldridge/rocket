@@ -319,7 +319,7 @@ class Control extends Module
 
   var decode_table = XDecode.table
   if (!params(BuildFPU).isEmpty) decode_table ++= FDecode.table
-  if (!params(BuildRoCC).isEmpty) decode_table ++= RoCCDecode.table
+  decode_table ++= RoCCDecode.table
 
   val cs = DecodeLogic(io.dpath.inst, XDecode.decode_default, decode_table)
   
@@ -439,8 +439,7 @@ class Control extends Module
   val id_amo_rl = io.dpath.inst(25)
   val id_fence_next = id_fence || id_amo && id_amo_rl
   val id_mem_busy = !io.dmem.ordered || ex_reg_mem_val
-  val id_rocc_busy = Bool(!params(BuildRoCC).isEmpty) &&
-    (io.rocc.busy || ex_reg_rocc_val || mem_reg_rocc_val || wb_reg_rocc_val)
+  val id_rocc_busy = (io.rocc.busy || ex_reg_rocc_val || mem_reg_rocc_val || wb_reg_rocc_val)
   id_reg_fence := id_fence_next || id_reg_fence && id_mem_busy
   val id_do_fence = id_rocc_busy && id_fence ||
     id_mem_busy && (id_amo && id_amo_aq || id_fence_i || id_reg_fence && (id_mem_val || id_rocc_val) || id_csr_flush)

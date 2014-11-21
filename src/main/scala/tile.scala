@@ -10,7 +10,6 @@ case object CoreName extends Field[String]
 case object NDCachePorts extends Field[Int]
 case object NTilePorts extends Field[Int]
 case object NPTWPorts extends Field[Int]
-case object BuildRoCC extends Field[Option[() => RoCC]]
 
 abstract class Tile(resetSignal: Bool = null) extends Module(_reset = resetSignal) {
   val io = new Bundle {

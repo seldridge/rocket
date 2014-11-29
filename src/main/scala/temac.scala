@@ -74,6 +74,8 @@ class ManagementMachine extends Module
 
   val handled = Reg(init=Bits(0))
 
+  val bringup_sfp_tx_disable = Reg(init=UInt(0, 32))
+
   io.s_axi_awvalid := (state === issue_addr) && io.cfgd_in(32)
   io.s_axi_arvalid := (state === issue_addr) && (io.cfgd_in(32) === UInt(0))
 
@@ -83,6 +85,10 @@ class ManagementMachine extends Module
   io.s_axi_rready := (state === wait_for_data_in)
 
   io.stall_out := ((state != idle) || (io.write_to_cfga)) && (!handled) // stall when not in idle, or when transitioning out of idle
+
+  // goes low for 1s after isloate turned off (50,000,000 to 100,000,000)
+  // assuming 50MHz
+  io.sfp_tx_disable := (bringup_sfp_tx_disable < UInt(50000000))
 
   // default:
   state := state
@@ -112,11 +118,25 @@ class ManagementMachine extends Module
     when (io.s_axi_bvalid) {
       state := idle
       handled := Bits(1) // "software stall" makes this irrelevant
+      when (io.cfgd_in(31, 0) === Bits("h06004800")) {
+        // kickoff the sfp_tx_disable reset cycle after turning off isolate
+        bringup_sfp_tx_disable := UInt(1)
+      }
     }
   } .otherwise {
     // should never happen
     state := idle
   }
+
+  // counter idles at 0
+  when (bringup_sfp_tx_disable === UInt(0)) {
+    bringup_sfp_tx_disable := bringup_sfp_tx_disable
+  } .elsewhen (bringup_sfp_tx_disable === UInt(100000000)) {
+    bringup_sfp_tx_disable := UInt(0)
+  } .otherwise {
+    bringup_sfp_tx_disable := bringup_sfp_tx_disable + UInt(1)
+  }
+
 }
 
 class TEMACIOTransmit extends Bundle {
@@ -176,6 +196,8 @@ class TEMACIO extends Bundle {
   val s_axi_rresp = UInt(INPUT, 2)
   val s_axi_rvalid = Bool(INPUT)
   val s_axi_rready = Bool(OUTPUT)
+
+  val sfp_tx_disable = Bool(OUTPUT)
 }
 
 class TEMACIOManage extends Bundle {
@@ -201,4 +223,6 @@ class TEMACIOManage extends Bundle {
   val s_axi_rresp = UInt(INPUT, 2)
   val s_axi_rvalid = Bool(INPUT)
   val s_axi_rready = Bool(OUTPUT)
+
+  val sfp_tx_disable = Bool(OUTPUT)
 }

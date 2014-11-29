@@ -99,6 +99,9 @@ class CSRFile extends Module
   val temac_transmit = Module(new TransmitMachine)
   val temac_receive = Module(new ReceiveMachine)
 
+  // connect sfp_tx_disable
+  io.temac.sfp_tx_disable := temac_manage.io.sfp_tx_disable
+
   // defaults TEMAC
   temac_receive.io.rx_axis_fifo_tdata := io.temac.rx_axis_fifo_tdata
   temac_receive.io.rx_axis_fifo_tvalid := io.temac.rx_axis_fifo_tvalid

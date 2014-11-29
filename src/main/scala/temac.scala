@@ -55,7 +55,6 @@ class ReceiveMachine extends Module
     rxd_reg := Cat(io.rx_axis_fifo_tlast, UInt(1), io.rx_axis_fifo_tdata)
   }
 
-
 }
 
 class ManagementMachine extends Module 
@@ -86,12 +85,19 @@ class ManagementMachine extends Module
 
   io.stall_out := ((state != idle) || (io.write_to_cfga)) && (!handled) // stall when not in idle, or when transitioning out of idle
 
-  // goes low for 1s after isloate turned off (50,000,000 to 100,000,000)
-  // assuming 50MHz
   io.sfp_tx_disable := (bringup_sfp_tx_disable < UInt(50000000))
 
   // default:
   state := state
+
+  // counter idles at 0
+  when (bringup_sfp_tx_disable === UInt(0)) {
+    bringup_sfp_tx_disable := bringup_sfp_tx_disable
+  } .elsewhen (bringup_sfp_tx_disable === UInt(100000000)) {
+    bringup_sfp_tx_disable := UInt(0)
+  } .otherwise {
+    bringup_sfp_tx_disable := bringup_sfp_tx_disable + UInt(1)
+  }
 
   when (state === idle) {
     handled := Bits(0)
@@ -118,7 +124,7 @@ class ManagementMachine extends Module
     when (io.s_axi_bvalid) {
       state := idle
       handled := Bits(1) // "software stall" makes this irrelevant
-      when (io.cfgd_in(31, 0) === Bits("h06004800")) {
+      when (io.cfgd_in(33)) { //cfgd bit 33 indicates launch sfp_tx_disable
         // kickoff the sfp_tx_disable reset cycle after turning off isolate
         bringup_sfp_tx_disable := UInt(1)
       }
@@ -126,15 +132,6 @@ class ManagementMachine extends Module
   } .otherwise {
     // should never happen
     state := idle
-  }
-
-  // counter idles at 0
-  when (bringup_sfp_tx_disable === UInt(0)) {
-    bringup_sfp_tx_disable := bringup_sfp_tx_disable
-  } .elsewhen (bringup_sfp_tx_disable === UInt(100000000)) {
-    bringup_sfp_tx_disable := UInt(0)
-  } .otherwise {
-    bringup_sfp_tx_disable := bringup_sfp_tx_disable + UInt(1)
   }
 
 }

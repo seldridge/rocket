@@ -218,16 +218,20 @@ class Datapath extends Module
   ll_wdata := div.io.resp.bits.data
   io.ctrl.ll_waddr := div.io.resp.bits.tag
   io.ctrl.ll_wen := div.io.resp.fire()
-  io.rocc.resp.ready := io.ctrl.ll_ready
-  when (io.rocc.resp.fire()) {
-    div.io.resp.ready := Bool(false)
-    ll_wdata := io.rocc.resp.bits.data
-    io.ctrl.ll_waddr := io.rocc.resp.bits.rd
-    io.ctrl.ll_wen := Bool(true)
+
+  if (params(UseRoCC)) {
+    io.rocc.resp.ready := io.ctrl.ll_ready
+    when (io.rocc.resp.fire()) {
+      div.io.resp.ready := Bool(false)
+      ll_wdata := io.rocc.resp.bits.data
+      io.ctrl.ll_waddr := io.rocc.resp.bits.rd
+      io.ctrl.ll_wen := Bool(true)
+    }
   }
   when (dmem_resp_replay && dmem_resp_xpu) {
     div.io.resp.ready := Bool(false)
-    io.rocc.resp.ready := Bool(false)
+    if (params(UseRoCC))
+      io.rocc.resp.ready := Bool(false)
     io.ctrl.ll_waddr := dmem_resp_waddr
     io.ctrl.ll_wen := Bool(true)
   }

@@ -10,6 +10,7 @@ case object CoreName extends Field[String]
 case object NDCachePorts extends Field[Int]
 case object NTilePorts extends Field[Int]
 case object NPTWPorts extends Field[Int]
+case object UseRoCC extends Field[Boolean]
 
 abstract class Tile(resetSignal: Bool = null) extends Module(_reset = resetSignal) {
   val io = new Bundle {
@@ -47,14 +48,16 @@ class RocketTile(resetSignal: Bool = null) extends Tile(resetSignal) {
   memArb.io.in(1) <> icache.io.mem
 
   // wire RoCC connections to port
-  val dcIF = Module(new SimpleHellaCacheIF)
-  core.io.rocc <> io.rocc
-  dcIF.io.requestor <> io.rocc.mem
-  dcArb.io.requestor(2) <> dcIF.io.cache
-  memArb.io.in(2) <> io.rocc.imem
-  ptw.io.requestor(2) <> io.rocc.iptw
-  ptw.io.requestor(3) <> io.rocc.dptw
-  ptw.io.requestor(4) <> io.rocc.pptw
+  if (params(UseRoCC)) {
+    val dcIF = Module(new SimpleHellaCacheIF)
+    core.io.rocc <> io.rocc
+    dcIF.io.requestor <> io.rocc.mem
+    dcArb.io.requestor(2) <> dcIF.io.cache
+    memArb.io.in(2) <> io.rocc.imem
+    ptw.io.requestor(2) <> io.rocc.iptw
+    ptw.io.requestor(3) <> io.rocc.dptw
+    ptw.io.requestor(4) <> io.rocc.pptw
+  }
 
   io.tilelink.acquire <> memArb.io.out.acquire
   io.tilelink.grant <> memArb.io.out.grant

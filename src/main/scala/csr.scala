@@ -93,7 +93,7 @@ class CSRFile extends Module
 
   val r_irq_timer = Reg(init=Bool(false))
   val r_irq_ipi = Reg(init=Bool(true))
-  val irq_rocc = io.rocc.interrupt
+  val irq_rocc = Bool(params(UseRoCC)) && io.rocc.interrupt
 
   val temac_manage = Module(new ManagementMachine)
   val temac_transmit = Module(new TransmitMachine)
@@ -288,6 +288,7 @@ class CSRFile extends Module
       reg_status.u64 := true
       reg_status.zero := 0
       if (!params(UseVM)) reg_status.vm := false
+      if (!params(UseRoCC)) reg_status.er := false
       if (params(BuildFPU).isEmpty) reg_status.ef := false
     }
     when (decoded_addr(CSRs.fflags))   { reg_fflags := wdata }

@@ -5,6 +5,7 @@ package rocket
 import Chisel._
 import Util._
 import uncore._
+import dma._
 
 case object BuildFPU extends Field[Option[() => FPU]]
 case object XprLen extends Field[Int]
@@ -46,6 +47,7 @@ class RocketIO extends Bundle
   val ptw = new DatapathPTWIO().flip
   val rocc = new RoCCInterface().flip
   val temac = new TEMACIO
+  val dma = new DMAControlIO().flip
 }
 
 class Core extends Module with CoreParameters
@@ -78,4 +80,5 @@ class Core extends Module with CoreParameters
   dpath.io.rocc <> io.rocc
 
   io.temac <> dpath.io.temac
+  io.dma <> dpath.io.dma
 }

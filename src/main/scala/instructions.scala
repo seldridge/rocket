@@ -244,11 +244,20 @@ object CSRs {
   val tohost = 0x51e
   val fromhost = 0x51f
   // TEMAC
-  val txd = 0x520
-  val rxd = 0x521
-  val cfga = 0x522
-  val cfgd = 0x523
+  val cfga = 0x520
+  val cfgd = 0x521
   // END TEMAC
+  // DMA
+  val dmastatus = 0x530
+  val dmatxaddr = 0x531
+  val dmatxcnt = 0x532
+  val dmatxwptr = 0x533
+  val dmatxrptr = 0x534
+  val dmarxaddr = 0x535
+  val dmarxcnt = 0x536
+  val dmarxwptr = 0x537
+  val dmarxrptr = 0x538
+  // END DMA
   val cycle = 0xc00
   val time = 0xc01
   val instret = 0xc02
@@ -298,11 +307,20 @@ object CSRs {
     res += tohost
     res += fromhost
     // TEMAC
-    res += txd
-    res += rxd
     res += cfga
     res += cfgd
     // END TEMAC
+    // DMA
+    res += dmastatus
+    res += dmatxaddr
+    res += dmatxcnt
+    res += dmatxwptr
+    res += dmatxrptr
+    res += dmarxaddr
+    res += dmarxcnt
+    res += dmarxwptr
+    res += dmarxrptr
+    // END DMA
     res += cycle
     res += time
     res += instret

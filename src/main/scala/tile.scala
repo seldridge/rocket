@@ -4,6 +4,7 @@ package rocket
 
 import Chisel._
 import uncore._
+import dma._
 import Util._
 
 case object CoreName extends Field[String]
@@ -17,6 +18,7 @@ abstract class Tile(resetSignal: Bool = null) extends Module(_reset = resetSigna
     val tilelink = new TileLinkIO
     val host = new HTIFIO
     val temac = new TEMACIO
+    val dma = new DMAControlIO().flip
     val rocc = new RoCCInterface().flip
   }
 }
@@ -41,6 +43,7 @@ class RocketTile(resetSignal: Bool = null) extends Tile(resetSignal) {
   core.io.ptw <> ptw.io.dpath
 
   io.temac <> core.io.temac
+  io.dma <> core.io.dma
 
   val memArb = Module(new UncachedTileLinkIOArbiterThatAppendsArbiterId(params(NTilePorts)))
   val dcPortId = 0

@@ -6,6 +6,7 @@ import Chisel._
 import Util._
 import Node._
 import uncore._
+import dma._
 import scala.math._
 
 class Status extends Bundle {
@@ -44,6 +45,7 @@ class CSRFileIO extends Bundle {
   }
 
   val temac = new TEMACIO
+  val dma = new DMAControlIO().flip
 
   val status = new Status().asOutput
   val ptbr = UInt(OUTPUT, params(PAddrBits))
@@ -74,11 +76,13 @@ class CSRFile extends Module
   val reg_cause = Reg(Bits(width = params(XprLen)))
   val reg_tohost = Reg(init=Bits(0, params(XprLen)))
   val reg_fromhost = Reg(init=Bits(0, params(XprLen)))
-  // TEMAC
 
+  // TEMAC
   val reg_cfga = Reg(init=Bits(0, 64))
   val reg_cfgd = Reg(init=Bits(0, 64))
-  val reg_txd = Reg(init=Bits(0, 64))
+
+  //DMA
+  val reg_dmatxcnt = Reg(Bits(width = params(DMACountBits)))
 
   val reg_sup0 = Reg(Bits(width = params(XprLen)))
   val reg_sup1 = Reg(Bits(width = params(XprLen)))
@@ -93,33 +97,13 @@ class CSRFile extends Module
 
   val r_irq_timer = Reg(init=Bool(false))
   val r_irq_ipi = Reg(init=Bool(true))
+  val r_irq_dma = Reg(init=Bool(false))
   val irq_rocc = Bool(params(UseRoCC)) && io.rocc.interrupt
 
   val temac_manage = Module(new ManagementMachine)
-  val temac_transmit = Module(new TransmitMachine)
-  val temac_receive = Module(new ReceiveMachine)
 
   // connect sfp_tx_disable
   io.temac.sfp_tx_disable := temac_manage.io.sfp_tx_disable
-
-  // defaults TEMAC
-  temac_receive.io.rx_axis_fifo_tdata := io.temac.rx_axis_fifo_tdata
-  temac_receive.io.rx_axis_fifo_tvalid := io.temac.rx_axis_fifo_tvalid
-  io.temac.rx_axis_fifo_tready := temac_receive.io.rx_axis_fifo_tready
-  temac_receive.io.rx_axis_fifo_tlast := io.temac.rx_axis_fifo_tlast
-
-  // defaults for rxd_val_in and rxd_val_in_valid
-  temac_receive.io.rxd_val_in := UInt(0, 64)
-  temac_receive.io.rxd_val_in_valid := UInt(0)
-
-  io.temac.tx_axis_fifo_tdata := temac_transmit.io.tx_axis_fifo_tdata
-  io.temac.tx_axis_fifo_tvalid := temac_transmit.io.tx_axis_fifo_tvalid
-  io.temac.tx_axis_fifo_tlast := temac_transmit.io.tx_axis_fifo_tlast
-
-  // default, assigned inside whens below
-  temac_transmit.io.write_to_txd := UInt(0)
-  temac_transmit.io.txd_in := reg_txd
-  temac_transmit.io.tx_axis_fifo_tready := io.temac.tx_axis_fifo_tready
 
   // TODO stall
 
@@ -196,7 +180,7 @@ class CSRFile extends Module
   r_rx_axis_fifo_tvalid := io.temac.rx_axis_fifo_tvalid
 
   io.status := reg_status
-  io.status.ip := Cat(r_irq_timer, reg_fromhost.orR, r_irq_ipi, r_rx_axis_fifo_tvalid,
+  io.status.ip := Cat(r_irq_timer, reg_fromhost.orR, r_irq_ipi, r_irq_dma,
                       Bool(false), irq_rocc,         Bool(false), Bool(false))
   io.fatc := wen && decoded_addr(CSRs.fatc)
   io.evec := Mux(io.exception, reg_evec.toSInt, reg_epc).toUInt
@@ -265,8 +249,13 @@ class CSRFile extends Module
     CSRs.fromhost -> reg_fromhost,
     CSRs.cfga -> reg_cfga,
     CSRs.cfgd -> reg_cfgd,
-    CSRs.txd -> reg_txd,
-    CSRs.rxd -> temac_receive.io.rxd_val
+    CSRs.dmastatus -> Cat(io.dma.rx.deq.valid, io.dma.rx.enq.ready,
+      io.dma.tx.enq.ready, r_irq_dma),
+    CSRs.dmatxwptr -> io.dma.tx.enq.ptr,
+    CSRs.dmatxrptr -> io.dma.tx.deq.ptr,
+    CSRs.dmarxwptr -> io.dma.rx.enq.ptr,
+    CSRs.dmarxrptr -> io.dma.rx.deq.ptr,
+    CSRs.dmarxcnt -> io.dma.rx.deq.bits.cnt
   )
 
   for (i <- 0 until reg_uarch_counters.size)
@@ -279,7 +268,17 @@ class CSRFile extends Module
     reg_fflags := reg_fflags | io.fcsr_flags.bits
   }
 
+  // DMA
+  io.dma.tx.enq.bits.addr := wdata
+  io.dma.tx.enq.bits.cnt := reg_dmatxcnt
+  io.dma.tx.enq.valid := Bool(false)
+  io.dma.rx.enq.bits.addr := wdata
+  io.dma.rx.enq.valid := Bool(false)
+  io.dma.rx.deq.ready := Bool(false)
 
+  val irq_dma_stick = Bool()
+  irq_dma_stick := Bool(true)
+  r_irq_dma := (r_irq_dma & irq_dma_stick) || io.dma.irq
 
   when (wen) {
     when (decoded_addr(CSRs.status)) {
@@ -307,15 +306,12 @@ class CSRFile extends Module
       temac_manage.io.write_to_cfga := UInt(1) // start the axi state machine
     } // writes to cfga 
 
-    when (decoded_addr(CSRs.txd))      {
-      reg_txd := wdata
-      temac_transmit.io.write_to_txd := UInt(1)
-    }
-
-    when (decoded_addr(CSRs.rxd))      {
-      temac_receive.io.rxd_val_in := wdata
-      temac_receive.io.rxd_val_in_valid := UInt(1)
-    }
+    // DMA
+    when (decoded_addr(CSRs.dmastatus)) { irq_dma_stick := wdata(0) }
+    when (decoded_addr(CSRs.dmatxcnt)) { reg_dmatxcnt := wdata }
+    when (decoded_addr(CSRs.dmatxaddr)) { io.dma.tx.enq.valid := Bool(true) }
+    when (decoded_addr(CSRs.dmarxaddr)) { io.dma.rx.enq.valid := Bool(true) }
+    when (decoded_addr(CSRs.dmarxcnt)) { io.dma.rx.deq.ready := Bool(true) }
 
     when (decoded_addr(CSRs.clear_ipi)){ r_irq_ipi := wdata(0) }
     when (decoded_addr(CSRs.sup0))     { reg_sup0 := wdata }

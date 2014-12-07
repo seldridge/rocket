@@ -6,6 +6,7 @@ import Chisel._
 import Instructions._
 import Util._
 import uncore._
+import dma._
 
 class Datapath extends Module
 {
@@ -18,6 +19,7 @@ class Datapath extends Module
     val fpu = new DpathFPUIO
     val rocc = new RoCCInterface().flip
     val temac = new TEMACIO
+    val dma = new DMAControlIO().flip
   }
 
   // execute definitions
@@ -187,6 +189,7 @@ class Datapath extends Module
   pcr.io.uarch_counters.foreach(_ := Bool(false))
 
   io.temac <> pcr.io.temac
+  io.dma <> pcr.io.dma
 
   io.ptw.ptbr := pcr.io.ptbr
   io.ptw.invalidate := pcr.io.fatc

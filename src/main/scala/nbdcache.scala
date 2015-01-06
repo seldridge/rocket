@@ -13,13 +13,15 @@ case object LRSCCycles extends Field[Int]
 case object NDTLBEntries extends Field[Int]
 
 abstract trait L1HellaCacheParameters extends L1CacheParameters {
-  val indexmsb = untagBits-1
-  val indexlsb = blockOffBits
-  val offsetmsb = indexlsb-1
+  val idxMSB = untagBits-1
+  val idxLSB = blockOffBits
+  val offsetmsb = idxLSB-1
   val offsetlsb = wordOffBits
   val doNarrowRead = coreDataBits * nWays % rowBits == 0
   val encDataBits = code.width(coreDataBits)
   val encRowBits = encDataBits*rowWords
+  val sdqDepth = params(StoreDataQueueDepth)
+  val nMSHRs = params(NMSHRs)
 }
 
 abstract class L1HellaCacheBundle extends Bundle with L1HellaCacheParameters
@@ -106,8 +108,8 @@ class HellaCacheIO extends CoreBundle {
   val ordered = Bool(INPUT)
 }
 
-trait HasSDQId extends CoreBundle {
-  val sdq_id = UInt(width = log2Up(params(StoreDataQueueDepth)))
+trait HasSDQId extends CoreBundle with L1HellaCacheParameters {
+  val sdq_id = UInt(width = log2Up(sdqDepth))
 }
 
 trait HasMissInfo extends CoreBundle with L1HellaCacheParameters {
@@ -116,13 +118,10 @@ trait HasMissInfo extends CoreBundle with L1HellaCacheParameters {
   val way_en = Bits(width = nWays)
 }
 
-class MSHRReq extends HellaCacheReqInternal with HasMissInfo with HasCoreData
-
-class MSHRReqInternal extends HellaCacheReqInternal with HasMissInfo with HasSDQId
-
-class Replay extends HellaCacheReqInternal with L1HellaCacheParameters with HasCoreData
-
-class ReplayInternal extends HellaCacheReqInternal with L1HellaCacheParameters with HasSDQId
+class Replay extends HellaCacheReqInternal with HasCoreData
+class ReplayInternal extends HellaCacheReqInternal with HasSDQId
+class MSHRReq extends Replay with HasMissInfo
+class MSHRReqInternal extends ReplayInternal with HasMissInfo
 
 class DataReadReq extends L1HellaCacheBundle {
   val way_en = Bits(width = nWays)
@@ -190,8 +189,7 @@ class MSHR(id: Int) extends L1HellaCacheModule {
 
   val acquire_type = Reg(UInt())
   val release_type = Reg(UInt())
-  val line_state = Reg(new ClientMetadata()(co))
-  val refill_count = Reg(UInt(width = log2Up(refillCycles))) // TODO: zero-width wire
+  val line_state = Reg(new ClientMetadata)
   val req = Reg(new MSHRReqInternal())
 
   val req_cmd = io.req_bits.cmd
@@ -199,9 +197,8 @@ class MSHR(id: Int) extends L1HellaCacheModule {
   val idx_match = req_idx === io.req_bits.addr(untagBits-1,blockOffBits)
   val sec_rdy = idx_match && (state === s_wb_req || state === s_wb_resp || state === s_meta_clear || (state === s_refill_req || state === s_refill_resp) && !co.needsTransactionOnSecondaryMiss(req_cmd, io.mem_req.bits))
 
-  require(isPow2(refillCycles))
   val reply = io.mem_grant.valid && io.mem_grant.bits.payload.client_xact_id === UInt(id)
-  val refill_done = reply && (if(refillCycles > 1) refill_count.andR else Bool(true))
+  val (refill_cnt, refill_done) = Counter(reply && co.messageUpdatesDataArray(io.mem_grant.bits.payload), refillCycles) // TODO: Zero width?
   val wb_done = reply && (state === s_wb_resp)
 
   val meta_on_flush = co.clientMetadataOnFlush
@@ -224,11 +221,8 @@ class MSHR(id: Int) extends L1HellaCacheModule {
     state := s_meta_write_resp
   }
   when (state === s_refill_resp) {
+    when (reply) { line_state := meta_on_grant }
     when (refill_done) { state := s_meta_write_req }
-    when (reply) {
-      if(refillCycles > 1) refill_count := refill_count + UInt(1)
-      line_state := meta_on_grant
-    }
   }
   when (io.mem_req.fire()) { // s_refill_req
     state := s_refill_resp
@@ -242,13 +236,12 @@ class MSHR(id: Int) extends L1HellaCacheModule {
   when (io.wb_req.fire()) { // s_wb_req
     state := s_wb_resp 
   }
-
   when (io.req_sec_val && io.req_sec_rdy) { // s_wb_req, s_wb_resp, s_refill_req
     acquire_type := co.getAcquireTypeOnSecondaryMiss(req_cmd, meta_on_flush, io.mem_req.bits)
   }
   when (io.req_pri_val && io.req_pri_rdy) {
     line_state := meta_on_flush
-    refill_count := UInt(0)
+    refill_cnt := UInt(0)
     acquire_type := co.getAcquireTypeOnPrimaryMiss(req_cmd, meta_on_flush)
     release_type := co.getReleaseTypeOnVoluntaryWriteback() //TODO downgrades etc 
     req := io.req_bits
@@ -267,7 +260,7 @@ class MSHR(id: Int) extends L1HellaCacheModule {
 
   val ackq = Module(new Queue(new LogicalNetworkIO(new Finish), 1))
   ackq.io.enq.valid := (wb_done || refill_done) && co.requiresAckForGrant(io.mem_grant.bits.payload)
-  ackq.io.enq.bits.payload.master_xact_id := io.mem_grant.bits.payload.master_xact_id
+  ackq.io.enq.bits.payload.manager_xact_id := io.mem_grant.bits.payload.manager_xact_id
   ackq.io.enq.bits.header.dst := io.mem_grant.bits.header.src
   val can_finish = state === s_invalid || state === s_refill_req || state === s_refill_resp
   io.mem_finish.valid := ackq.io.deq.valid && can_finish
@@ -276,7 +269,7 @@ class MSHR(id: Int) extends L1HellaCacheModule {
 
   io.idx_match := (state != s_invalid) && idx_match
   io.mem_resp := req
-  io.mem_resp.addr := (if(refillCycles > 1) Cat(req_idx, refill_count) else req_idx) << rowOffBits
+  io.mem_resp.addr := (if(refillCycles > 1) Cat(req_idx, refill_cnt) else req_idx) << rowOffBits
   io.tag := req.addr >> untagBits
   io.req_pri_rdy := state === s_invalid
   io.req_sec_rdy := sec_rdy && rpq.io.enq.ready
@@ -336,26 +329,26 @@ class MSHRFile extends L1HellaCacheModule {
     val fence_rdy = Bool(OUTPUT)
   }
 
-  val sdq_val = Reg(init=Bits(0, params(StoreDataQueueDepth)))
-  val sdq_alloc_id = PriorityEncoder(~sdq_val(params(StoreDataQueueDepth)-1,0))
+  val sdq_val = Reg(init=Bits(0, sdqDepth))
+  val sdq_alloc_id = PriorityEncoder(~sdq_val(sdqDepth-1,0))
   val sdq_rdy = !sdq_val.andR
   val sdq_enq = io.req.valid && io.req.ready && isWrite(io.req.bits.cmd)
-  val sdq = Mem(io.req.bits.data, params(StoreDataQueueDepth))
+  val sdq = Mem(io.req.bits.data, sdqDepth)
   when (sdq_enq) { sdq(sdq_alloc_id) := io.req.bits.data }
 
-  val idxMatch = Vec.fill(params(NMSHRs)){Bool()}
-  val tagList = Vec.fill(params(NMSHRs)){Bits()}
+  val idxMatch = Vec.fill(nMSHRs){Bool()}
+  val tagList = Vec.fill(nMSHRs){Bits()}
   val tag_match = Mux1H(idxMatch, tagList) === io.req.bits.addr >> untagBits
 
-  val wbTagList = Vec.fill(params(NMSHRs)){Bits()}
-  val memRespMux = Vec.fill(params(NMSHRs)){new DataWriteReq}
-  val meta_read_arb = Module(new Arbiter(new L1MetaReadReq, params(NMSHRs)))
-  val meta_write_arb = Module(new Arbiter(new L1MetaWriteReq, params(NMSHRs)))
-  val mem_req_arb = Module(new Arbiter(new Acquire, params(NMSHRs)))
-  val mem_finish_arb = Module(new Arbiter(new LogicalNetworkIO(new Finish), params(NMSHRs)))
-  val wb_req_arb = Module(new Arbiter(new WritebackReq, params(NMSHRs)))
-  val replay_arb = Module(new Arbiter(new ReplayInternal, params(NMSHRs)))
-  val alloc_arb = Module(new Arbiter(Bool(), params(NMSHRs)))
+  val wbTagList = Vec.fill(nMSHRs){Bits()}
+  val memRespMux = Vec.fill(nMSHRs){new DataWriteReq}
+  val meta_read_arb = Module(new Arbiter(new L1MetaReadReq, nMSHRs))
+  val meta_write_arb = Module(new Arbiter(new L1MetaWriteReq, nMSHRs))
+  val mem_req_arb = Module(new LockingArbiter(new Acquire, nMSHRs, outerDataBeats, co.messageHasData _))
+  val mem_finish_arb = Module(new Arbiter(new LogicalNetworkIO(new Finish), nMSHRs))
+  val wb_req_arb = Module(new Arbiter(new WritebackReq, nMSHRs))
+  val replay_arb = Module(new Arbiter(new ReplayInternal, nMSHRs))
+  val alloc_arb = Module(new Arbiter(Bool(), nMSHRs))
 
   var idx_match = Bool(false)
   var pri_rdy = Bool(false)
@@ -364,7 +357,7 @@ class MSHRFile extends L1HellaCacheModule {
   io.fence_rdy := true
   io.probe_rdy := true
 
-  for (i <- 0 until params(NMSHRs)) {
+  for (i <- 0 until nMSHRs) {
     val mshr = Module(new MSHR(i))
 
     idxMatch(i) := mshr.io.idx_match
@@ -413,8 +406,8 @@ class MSHRFile extends L1HellaCacheModule {
   io.replay <> replay_arb.io.out
 
   when (io.replay.valid || sdq_enq) {
-    sdq_val := sdq_val & ~(UIntToOH(replay_arb.io.out.bits.sdq_id) & Fill(params(StoreDataQueueDepth), free_sdq)) | 
-               PriorityEncoderOH(~sdq_val(params(StoreDataQueueDepth)-1,0)) & Fill(params(StoreDataQueueDepth), sdq_enq)
+    sdq_val := sdq_val & ~(UIntToOH(replay_arb.io.out.bits.sdq_id) & Fill(sdqDepth, free_sdq)) | 
+               PriorityEncoderOH(~sdq_val(sdqDepth-1,0)) & Fill(sdqDepth, sdq_enq)
   }
 }
 
@@ -430,7 +423,9 @@ class WritebackUnit extends L1HellaCacheModule {
   val active = Reg(init=Bool(false))
   val r1_data_req_fired = Reg(init=Bool(false))
   val r2_data_req_fired = Reg(init=Bool(false))
-  val cnt = Reg(init = UInt(0, width = log2Up(refillCycles+1)))
+  val cnt = Reg(init = UInt(0, width = log2Up(refillCycles+1))) //TODO Zero width
+  val buf_v = (if(refillCyclesPerBeat > 1) Reg(init=Bits(0, width = refillCyclesPerBeat-1)) else Bits(1))
+  val beat_done = buf_v.andR
   val req = Reg(new WritebackReq)
 
   io.release.valid := false
@@ -441,27 +436,22 @@ class WritebackUnit extends L1HellaCacheModule {
       r1_data_req_fired := true
       cnt := cnt + 1
     }
-    if(refillCycles > 1) { // Coalescing buffer inserted
-      when (!r1_data_req_fired && !r2_data_req_fired && cnt === refillCycles) {
-        io.release.valid := true
-        active := !io.release.ready
-      }
-    } else {                    // No buffer, data released a cycle earlier
-      when (r2_data_req_fired) {
-        io.release.valid := true
-        when(!io.release.ready) {
-          r1_data_req_fired := false
-          r2_data_req_fired := false
-          cnt := UInt(0)
-        } .otherwise {
-          active := false
-        }
+    when (r2_data_req_fired) {
+      io.release.valid := beat_done
+      when(!io.release.ready) {
+        r1_data_req_fired := false
+        r2_data_req_fired := false
+        cnt := cnt - Mux[UInt](Bool(refillCycles > 1) && r1_data_req_fired, 2, 1)
+      } .elsewhen(beat_done) { if(refillCyclesPerBeat > 1) buf_v := 0 }
+      when(!r1_data_req_fired) {
+        active := cnt < UInt(refillCycles)
       }
     }
   }
   when (io.req.fire()) {
     active := true
     cnt := 0
+    if(refillCyclesPerBeat > 1) buf_v := 0
     req := io.req.bits
   }
 
@@ -475,25 +465,23 @@ class WritebackUnit extends L1HellaCacheModule {
 
   io.data_req.valid := fire
   io.data_req.bits.way_en := req.way_en
-  if(refillCycles > 1) {
-    io.data_req.bits.addr := Cat(req.idx, cnt(log2Up(refillCycles)-1,0)) << rowOffBits
-  } else {
-    io.data_req.bits.addr := req.idx << rowOffBits
-  }
+  io.data_req.bits.addr := (if(refillCycles > 1) Cat(req.idx, cnt(log2Up(refillCycles)-1,0))
+                            else req.idx) << rowOffBits
 
   io.release.bits.r_type := req.r_type
   io.release.bits.addr := Cat(req.tag, req.idx).toUInt
   io.release.bits.client_xact_id := req.client_xact_id
-  if(refillCycles > 1) {
-    val data_buf = Reg(Bits())
-    when(active && r2_data_req_fired) {
-      data_buf := Cat(io.data_resp, data_buf(refillCycles*encRowBits-1, encRowBits))
-    }
-    io.release.bits.data := data_buf
-  } else {
-    io.release.bits.data := io.data_resp
-  }
-
+  io.release.bits.data := 
+    (if(refillCyclesPerBeat > 1) {
+      val data_buf = Reg(Bits())
+      when(active && r2_data_req_fired && !beat_done) {
+        data_buf := Cat(io.data_resp, data_buf((refillCyclesPerBeat-1)*encRowBits-1, encRowBits))
+        buf_v := (if(refillCyclesPerBeat > 2)
+                    Cat(UInt(1), buf_v(refillCyclesPerBeat-2,1))
+                  else UInt(1))
+      }
+      Cat(io.data_resp, data_buf)
+    } else { io.data_resp })
 }
 
 class ProbeUnit extends L1HellaCacheModule {
@@ -505,7 +493,7 @@ class ProbeUnit extends L1HellaCacheModule {
     val wb_req = Decoupled(new WritebackReq)
     val way_en = Bits(INPUT, nWays)
     val mshr_rdy = Bool(INPUT)
-    val line_state = new ClientMetadata()(co).asInput
+    val line_state = new ClientMetadata().asInput
   }
 
   val s_reset :: s_invalid :: s_meta_read :: s_meta_resp :: s_mshr_req :: s_release :: s_writeback_req :: s_writeback_resp :: s_meta_write :: Nil = Enum(UInt(), 9)
@@ -551,8 +539,12 @@ class ProbeUnit extends L1HellaCacheModule {
   }
 
   io.req.ready := state === s_invalid
-  io.rep.valid := state === s_release && !(hit && co.needsWriteback(line_state))
-  io.rep.bits := Release(co.getReleaseTypeOnProbe(req, Mux(hit, line_state, co.clientMetadataOnFlush)), req.addr, req.client_xact_id)
+  io.rep.valid := state === s_release &&
+                  !(hit && co.needsWriteback(line_state)) // Otherwise WBU will issue release
+  io.rep.bits := Release(co.getReleaseTypeOnProbe(req,
+                                                  Mux(hit, line_state, co.clientMetadataOnFlush)),
+                                                  req.addr, 
+                                                  req.client_xact_id)
 
   io.meta_read.valid := state === s_meta_read
   io.meta_read.bits.idx := req.addr
@@ -753,7 +745,7 @@ class HellaCache extends L1HellaCacheModule {
   io.cpu.xcpt.pf.st := s1_write && dtlb.io.resp.xcpt_st
 
   // tags
-  def onReset = L1Metadata(UInt(0), ClientMetadata(UInt(0))(co))
+  def onReset = L1Metadata(UInt(0), ClientMetadata(UInt(0)))
   val meta = Module(new MetadataArray(onReset _))
   val metaReadArb = Module(new Arbiter(new MetaReadReq, 5))
   val metaWriteArb = Module(new Arbiter(new L1MetaWriteReq, 2))
@@ -878,8 +870,8 @@ class HellaCache extends L1HellaCacheModule {
   metaReadArb.io.in(1) <> mshrs.io.meta_read
   metaWriteArb.io.in(0) <> mshrs.io.meta_write
 
-  // probes
-  val releaseArb = Module(new Arbiter(new Release, 2))
+  // probes and releases
+  val releaseArb = Module(new LockingArbiter(new Release, 2, outerDataBeats, co.messageHasData _))
   DecoupledLogicalNetworkIOWrapper(releaseArb.io.out) <> io.mem.release
 
   val probe = DecoupledLogicalNetworkIOUnwrapper(io.mem.probe)
@@ -895,11 +887,9 @@ class HellaCache extends L1HellaCacheModule {
 
   // refills
   def doRefill(g: Grant): Bool = co.messageUpdatesDataArray(g)
-  val refill = if(refillCycles > 1) {
-    val ser = Module(new FlowThroughSerializer(io.mem.grant.bits, refillCycles, doRefill))
-    ser.io.in <> io.mem.grant
-    ser.io.out
-  } else io.mem.grant
+  val ser = Module(new FlowThroughSerializer(io.mem.grant.bits, refillCyclesPerBeat, doRefill))
+  ser.io.in <> io.mem.grant
+  val refill = ser.io.out
   mshrs.io.mem_grant.valid := refill.fire()
   mshrs.io.mem_grant.bits := refill.bits
   refill.ready := writeArb.io.in(1).ready || !doRefill(refill.bits.payload)
@@ -949,7 +939,7 @@ class HellaCache extends L1HellaCacheModule {
 
   // nack it like it's hot
   val s1_nack = dtlb.io.req.valid && dtlb.io.resp.miss ||
-                s1_req.addr(indexmsb,indexlsb) === prober.io.meta_write.bits.idx && !prober.io.req.ready
+                s1_req.addr(idxMSB,idxLSB) === prober.io.meta_write.bits.idx && !prober.io.req.ready
   val s2_nack_hit = RegEnable(s1_nack, s1_valid || s1_replay)
   when (s2_nack_hit) { mshrs.io.req.valid := Bool(false) }
   val s2_nack_victim = s2_hit && mshrs.io.secondary_miss

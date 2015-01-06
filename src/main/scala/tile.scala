@@ -45,10 +45,10 @@ class RocketTile(resetSignal: Bool = null) extends Tile(resetSignal) {
   io.temac <> core.io.temac
   io.dma <> core.io.dma
 
-  val memArb = Module(new UncachedTileLinkIOArbiterThatAppendsArbiterId(params(NTilePorts)))
-  val dcPortId = 0
-  memArb.io.in(dcPortId) <> dcache.io.mem
-  memArb.io.in(1) <> icache.io.mem
+  val memArb = Module(new TileLinkIOArbiterThatAppendsArbiterId(params(NTilePorts)))
+  io.tilelink <> memArb.io.out
+  memArb.io.in(0) <> dcache.io.mem
+  memArb.io.in(1) <> TileLinkIOWrapper(icache.io.mem)
 
   // wire RoCC connections to port
   if (params(UseRoCC)) {
@@ -61,16 +61,4 @@ class RocketTile(resetSignal: Bool = null) extends Tile(resetSignal) {
     ptw.io.requestor(3) <> io.rocc.dptw
     ptw.io.requestor(4) <> io.rocc.pptw
   }
-
-  io.tilelink.acquire <> memArb.io.out.acquire
-  io.tilelink.grant <> memArb.io.out.grant
-  io.tilelink.finish <> memArb.io.out.finish
-  // Probes and releases routed directly to coherent dcache
-  io.tilelink.probe <> dcache.io.mem.probe
-  // Mimic client id extension done by UncachedTileLinkIOArbiter for Acquires from either client)
-  io.tilelink.release.valid   := dcache.io.mem.release.valid
-  dcache.io.mem.release.ready := io.tilelink.release.ready
-  io.tilelink.release.bits := dcache.io.mem.release.bits
-  io.tilelink.release.bits.payload.client_xact_id :=  Cat(dcache.io.mem.release.bits.payload.client_xact_id, UInt(dcPortId, log2Up(params(NTilePorts))))
-
 }

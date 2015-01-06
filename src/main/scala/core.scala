@@ -10,6 +10,7 @@ import dma._
 case object BuildFPU extends Field[Option[() => FPU]]
 case object XprLen extends Field[Int]
 case object NMultXpr extends Field[Int]
+case object FetchWidth extends Field[Int]
 case object RetireWidth extends Field[Int]
 case object UseVM extends Field[Boolean]
 case object FastLoadWord extends Field[Boolean]
@@ -21,6 +22,7 @@ case object CoreDCacheReqTagBits extends Field[Int]
 
 abstract trait CoreParameters extends UsesParameters {
   val xprLen = params(XprLen)
+  val coreFetchWidth = params(FetchWidth)
   val coreInstBits = params(CoreInstBits)
   val coreInstBytes = coreInstBits/8
   val coreDataBits = xprLen
@@ -33,6 +35,7 @@ abstract trait CoreParameters extends UsesParameters {
 
 abstract trait RocketCoreParameters extends CoreParameters
 {
+  require(params(FetchWidth) == 1)  // for now...
   require(params(RetireWidth) == 1) // for now...
 }
 

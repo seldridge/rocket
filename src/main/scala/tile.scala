@@ -36,7 +36,7 @@ class RocketTile(resetSignal: Bool = null) extends Tile(resetSignal) {
 
   core.io.host <> io.host
   core.io.imem <> icache.io.cpu
-  core.io.ptw <> ptw.io.dpath
+  core.io.ptw(0) <> ptw.io.dpath
 
   // Connect the caches and ROCC to the outer memory system
   io.cached <> dcache.io.mem
@@ -44,17 +44,20 @@ class RocketTile(resetSignal: Bool = null) extends Tile(resetSignal) {
   // otherwise, just hookup the icache
   io.uncached <> params(BuildRoCC).map { buildItHere =>
     val rocc = buildItHere()
+    val roccPtw = Module(new PTW(3))
     val memArb = Module(new ClientTileLinkIOArbiter(3))
     val dcIF = Module(new SimpleHellaCacheIF)
     core.io.rocc <> rocc.io
     dcIF.io.requestor <> rocc.io.mem
     dcArb.io.requestor(2) <> dcIF.io.cache
+    dcArb.io.requestor(3) <> roccPtw.io.mem
+    core.io.ptw(1) <> roccPtw.io.dpath
     memArb.io.in(0) <> icache.io.mem
     memArb.io.in(1) <> rocc.io.imem
     memArb.io.in(2) <> rocc.io.dmem
-    ptw.io.requestor(2) <> rocc.io.iptw
-    ptw.io.requestor(3) <> rocc.io.dptw
-    ptw.io.requestor(4) <> rocc.io.pptw
+    roccPtw.io.requestor(0) <> rocc.io.iptw
+    roccPtw.io.requestor(1) <> rocc.io.dptw
+    roccPtw.io.requestor(2) <> rocc.io.pptw
     memArb.io.out
   }.getOrElse(icache.io.mem)
 }

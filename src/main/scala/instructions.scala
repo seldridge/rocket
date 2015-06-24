@@ -257,6 +257,7 @@ object CSRs {
   val sip = 0x144
   val sptbr = 0x180
   val sasid = 0x181
+  val sxptbr = 0x182
   val cyclew = 0x900
   val timew = 0x901
   val instretw = 0x902

@@ -13,7 +13,7 @@ class Datapath extends CoreModule
     val host  = new HTIFIO
     val ctrl  = new CtrlDpathIO().flip
     val dmem = new HellaCacheIO
-    val ptw = new DatapathPTWIO().flip
+    val ptw = Vec.fill(nptws) { new DatapathPTWIO().flip }
     val imem  = new CPUFrontendIO
     val fpu = new DpathFPUIO
     val rocc = new RoCCInterface().flip
@@ -174,9 +174,15 @@ class Datapath extends CoreModule
   csr.io.pc := wb_reg_pc
   csr.io.uarch_counters.foreach(_ := Bool(false))
 
-  io.ptw.ptbr := csr.io.ptbr
-  io.ptw.invalidate := csr.io.fatc
-  io.ptw.status := csr.io.status
+  io.ptw(0).ptbr := csr.io.ptbr
+  io.ptw(0).invalidate := csr.io.fatc
+  io.ptw(0).status := csr.io.status
+
+  if (!params(BuildRoCC).isEmpty) {
+    io.ptw(1).ptbr := csr.io.xptbr
+    io.ptw(1).invalidate := csr.io.fatc
+    io.ptw(1).status := csr.io.status
+  }
 
   // memory stage
   mem_reg_kill := ex_reg_kill

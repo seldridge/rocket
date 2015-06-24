@@ -83,6 +83,7 @@ class CSRFileIO extends CoreBundle {
 
   val status = new MStatus().asOutput
   val ptbr = UInt(OUTPUT, paddrBits)
+  val xptbr = UInt(OUTPUT, paddrBits)
   val evec = UInt(OUTPUT, vaddrBitsExtended)
   val exception = Bool(INPUT)
   val retire = UInt(INPUT, log2Up(1+retireWidth))
@@ -118,6 +119,7 @@ class CSRFile extends CoreModule
   val reg_stvec = Reg(UInt(width = vaddrBits))
   val reg_stimecmp = Reg(Bits(width = 32))
   val reg_sptbr = Reg(UInt(width = paddrBits))
+  val reg_sxptbr = Reg(UInt(width = paddrBits))
   val reg_wfi = Reg(init=Bool(false))
 
   val reg_tohost = Reg(init=Bits(0, xLen))
@@ -237,6 +239,9 @@ class CSRFile extends CoreModule
     read_mapping += CSRs.sbadaddr -> reg_sbadaddr.sextTo(xLen)
     read_mapping += CSRs.sptbr -> reg_sptbr
     read_mapping += CSRs.sasid -> UInt(0)
+    if (!params(BuildRoCC).isEmpty)
+      read_mapping += CSRs.sxptbr -> reg_sxptbr
+    read_mapping += CSRs.sxptbr -> reg_sxptbr
     read_mapping += CSRs.sepc -> reg_sepc.sextTo(xLen)
     read_mapping += CSRs.stvec -> reg_stvec.sextTo(xLen)
   }
@@ -288,6 +293,7 @@ class CSRFile extends CoreModule
              Mux(maybe_insn_redirect_trap, reg_stvec.sextTo(vaddrBitsExtended),
              Mux(reg_mstatus.prv(1), reg_mepc, reg_sepc)))
   io.ptbr := reg_sptbr
+  io.xptbr := reg_sxptbr
   io.csr_xcpt := csr_xcpt
   io.eret := insn_ret || insn_redirect_trap
   io.status := reg_mstatus
@@ -438,6 +444,11 @@ class CSRFile extends CoreModule
       when (decoded_addr(CSRs.sptbr))    { reg_sptbr := Cat(wdata(paddrBits-1, pgIdxBits), Bits(0, pgIdxBits)) }
       when (decoded_addr(CSRs.sepc))     { reg_sepc := wdata(vaddrBitsExtended-1,0).toSInt & SInt(-coreInstBytes) }
       when (decoded_addr(CSRs.stvec))    { reg_stvec := wdata(vaddrBits-1,0).toSInt & SInt(-coreInstBytes) }
+
+      when (decoded_addr(CSRs.sxptbr))   {
+        if (!params(BuildRoCC).isEmpty)
+          reg_sxptbr := Cat(wdata(paddrBits - 1, pgIdxBits), Bits(0, pgIdxBits))
+      }
     }
   }
 

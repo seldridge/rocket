@@ -20,6 +20,7 @@ case object CoreInstBits extends Field[Int]
 case object CoreDataBits extends Field[Int]
 case object CoreDCacheReqTagBits extends Field[Int]
 case object NCustomMRWCSRs extends Field[Int]
+case object NPTWs extends Field[Int]
 
 abstract trait CoreParameters extends UsesParameters {
   val xLen = params(XLen)
@@ -31,6 +32,7 @@ abstract trait CoreParameters extends UsesParameters {
   val pgLevels = params(PgLevels)
   val pgLevelBits = params(PgLevelBits)
   val asIdBits = params(ASIdBits)
+  val nptws = params(NPTWs)
 
   val retireWidth = params(RetireWidth)
   val coreFetchWidth = params(FetchWidth)
@@ -54,12 +56,12 @@ abstract trait RocketCoreParameters extends CoreParameters
 abstract class CoreBundle extends Bundle with CoreParameters
 abstract class CoreModule extends Module with CoreParameters
 
-class RocketIO extends Bundle
+class RocketIO extends CoreBundle
 {
   val host =  new HTIFIO
   val imem = new CPUFrontendIO
   val dmem = new HellaCacheIO
-  val ptw = new DatapathPTWIO().flip
+  val ptw = Vec.fill(nptws) { new DatapathPTWIO().flip }
   val rocc = new RoCCInterface().flip
 }
 

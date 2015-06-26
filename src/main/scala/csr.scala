@@ -131,6 +131,11 @@ class CSRFile extends CoreModule
   val reg_fflags = Reg(UInt(width = 5))
   val reg_frm = Reg(UInt(width = 3))
 
+  val reg_rocc = Vec.fill(nRoCCCSRs) { Reg(init = Bits(0, xLen)) }
+
+  if (!params(BuildRoCC).isEmpty)
+    io.rocc.csrs := reg_rocc
+
   val irq_rocc = Bool(!params(BuildRoCC).isEmpty) && io.rocc.interrupt
 
   io.interrupt_cause := 0
@@ -239,8 +244,7 @@ class CSRFile extends CoreModule
     read_mapping += CSRs.sbadaddr -> reg_sbadaddr.sextTo(xLen)
     read_mapping += CSRs.sptbr -> reg_sptbr
     read_mapping += CSRs.sasid -> UInt(0)
-    if (!params(BuildRoCC).isEmpty)
-      read_mapping += CSRs.sxptbr -> reg_sxptbr
+    read_mapping += CSRs.sxptbr -> (if (!params(BuildRoCC).isEmpty) reg_sxptbr else UInt(0))
     read_mapping += CSRs.sxptbr -> reg_sxptbr
     read_mapping += CSRs.sepc -> reg_sepc.sextTo(xLen)
     read_mapping += CSRs.stvec -> reg_stvec.sextTo(xLen)
@@ -254,6 +258,11 @@ class CSRFile extends CoreModule
     require(addr >= 0x780 && addr <= 0x7ff, "custom MRW CSR address " + i + " is out of range")
     require(!read_mapping.contains(addr), "custom MRW CSR address " + i + " is already in use")
     read_mapping += addr -> io.custom_mrw_csrs(i)
+  }
+
+  for (i <- 0 until nRoCCCSRs) {
+    read_mapping += (CSRs.roccbase + i) ->
+      (if (!params(BuildRoCC).isEmpty) reg_rocc(i) else UInt(0))
   }
 
   val addr = Mux(cpu_ren, io.rw.addr, host_pcr_bits.addr)
@@ -445,9 +454,16 @@ class CSRFile extends CoreModule
       when (decoded_addr(CSRs.sepc))     { reg_sepc := wdata(vaddrBitsExtended-1,0).toSInt & SInt(-coreInstBytes) }
       when (decoded_addr(CSRs.stvec))    { reg_stvec := wdata(vaddrBits-1,0).toSInt & SInt(-coreInstBytes) }
 
-      when (decoded_addr(CSRs.sxptbr))   {
-        if (!params(BuildRoCC).isEmpty)
-          reg_sxptbr := Cat(wdata(paddrBits - 1, pgIdxBits), Bits(0, pgIdxBits))
+      if (!params(BuildRoCC).isEmpty) {
+        when (decoded_addr(CSRs.sxptbr)) {
+            reg_sxptbr := Cat(wdata(paddrBits - 1, pgIdxBits), Bits(0, pgIdxBits))
+        }
+
+        for (i <- 0 until nRoCCCSRs) {
+          when (decoded_addr(CSRs.roccbase + i)) {
+            reg_rocc(i) := wdata
+          }
+        }
       }
     }
   }

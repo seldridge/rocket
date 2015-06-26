@@ -34,7 +34,7 @@ class RoCCResponse extends CoreBundle
   val data = Bits(width = xLen)
 }
 
-class RoCCInterface extends Bundle
+class RoCCInterface extends CoreBundle
 {
   val cmd = Decoupled(new RoCCCommand).flip
   val resp = Decoupled(new RoCCResponse)
@@ -50,6 +50,7 @@ class RoCCInterface extends Bundle
   val dptw = new TLBPTWIO
   val pptw = new TLBPTWIO
   val exception = Bool(INPUT)
+  val csrs = Vec.fill(nRoCCCSRs) { Bits(INPUT, xLen) }
 }
 
 abstract class RoCC extends CoreModule

@@ -292,6 +292,7 @@ object CSRs {
   val stimeh = 0xd81
   val stimehw = 0xa81
   val mtimeh = 0x741
+  val roccbase = 0x800
   val all = {
     val res = collection.mutable.ArrayBuffer[Int]()
     res += fflags
@@ -326,6 +327,7 @@ object CSRs {
     res += sip
     res += sptbr
     res += sasid
+    res += sxptbr
     res += cyclew
     res += timew
     res += instretw

@@ -36,13 +36,15 @@ class RoCCResponse extends CoreBundle
 
 class RoCCInterface extends CoreBundle
 {
+  private val nCores = params(HTIFNCores)
   val cmd = Decoupled(new RoCCCommand).flip
   val resp = Decoupled(new RoCCResponse)
   val mem = new HellaCacheIO
   val busy = Bool(OUTPUT)
   val s = Bool(INPUT)
   val interrupt = Bool(OUTPUT)
-  
+  val host_id = UInt(INPUT, log2Up(nCores))
+
   // These should be handled differently, eventually
   val imem = new ClientUncachedTileLinkIO
   val dmem = new ClientUncachedTileLinkIO
@@ -51,6 +53,7 @@ class RoCCInterface extends CoreBundle
   val pptw = new TLBPTWIO
   val exception = Bool(INPUT)
   val csrs = Vec.fill(nRoCCCSRs) { Bits(INPUT, xLen) }
+  val net = new TileLinkNetworkIO
 }
 
 abstract class RoCC extends CoreModule

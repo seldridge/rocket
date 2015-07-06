@@ -251,7 +251,6 @@ object CSRs {
   val sstatus = 0x100
   val stvec = 0x101
   val sie = 0x104
-  val stimecmp = 0x121
   val sscratch = 0x140
   val sepc = 0x141
   val sip = 0x144
@@ -291,6 +290,7 @@ object CSRs {
   val instrethw = 0x982
   val stimeh = 0xd81
   val stimehw = 0xa81
+  val mtimecmph = 0x361
   val mtimeh = 0x741
   val roccbase = 0x800
   val all = {
@@ -321,7 +321,6 @@ object CSRs {
     res += sstatus
     res += stvec
     res += sie
-    res += stimecmp
     res += sscratch
     res += sepc
     res += sip
@@ -365,6 +364,7 @@ object CSRs {
     res += instrethw
     res += stimeh
     res += stimehw
+    res += mtimecmph
     res += mtimeh
     res.toArray
   }

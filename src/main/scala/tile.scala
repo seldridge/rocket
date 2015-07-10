@@ -17,6 +17,7 @@ abstract class Tile(resetSignal: Bool = null) extends Module(_reset = resetSigna
     val uncached = new ClientUncachedTileLinkIO
     val net = new TileLinkNetworkIO
     val host = new HTIFIO
+    val port = UInt(OUTPUT, width = params(LNHeaderBits))
   }
 }
 
@@ -60,7 +61,7 @@ class RocketTile(resetSignal: Bool = null) extends Tile(resetSignal) {
     roccPtw.io.requestor(1) <> rocc.io.dptw
     roccPtw.io.requestor(2) <> rocc.io.pptw
     rocc.io.net <> io.net
-    rocc.io.host_id := io.host.id
+    io.port := rocc.io.port
     memArb.io.out
   }.getOrElse(icache.io.mem)
 }

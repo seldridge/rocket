@@ -43,7 +43,7 @@ class RoCCInterface extends CoreBundle
   val busy = Bool(OUTPUT)
   val s = Bool(INPUT)
   val interrupt = Bool(OUTPUT)
-  val port = UInt(OUTPUT, params(LNHeaderBits))
+  val addr = new RemoteAddress().asOutput
 
   // These should be handled differently, eventually
   val imem = new ClientUncachedTileLinkIO

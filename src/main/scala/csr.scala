@@ -132,11 +132,6 @@ class CSRFile extends CoreModule
   val reg_fflags = Reg(UInt(width = 5))
   val reg_frm = Reg(UInt(width = 3))
 
-  val reg_rocc = Vec.fill(nRoCCCSRs) { Reg(init = Bits(0, xLen)) }
-
-  if (!params(BuildRoCC).isEmpty)
-    io.rocc.csrs := reg_rocc
-
   val irq_rocc = Bool(!params(BuildRoCC).isEmpty) && io.rocc.interrupt
 
   io.interrupt_cause := 0
@@ -264,9 +259,8 @@ class CSRFile extends CoreModule
     read_mapping += addr -> io.custom_mrw_csrs(i)
   }
 
-  for (i <- 0 until nRoCCCSRs) {
-    read_mapping += (CSRs.roccbase + i) ->
-      (if (!params(BuildRoCC).isEmpty) reg_rocc(i) else UInt(0))
+  for (i <- 0 until nRoccCSRs) {
+    read_mapping += (CSRs.roccbase + i) -> io.rocc.csrs.rdata(i)
   }
 
   val addr = Mux(cpu_ren, io.rw.addr, host_pcr_bits.addr)
@@ -462,14 +456,16 @@ class CSRFile extends CoreModule
         when (decoded_addr(CSRs.sxptbr)) {
             reg_sxptbr := Cat(wdata(paddrBits - 1, pgIdxBits), Bits(0, pgIdxBits))
         }
-
-        for (i <- 0 until nRoCCCSRs) {
-          when (decoded_addr(CSRs.roccbase + i)) {
-            reg_rocc(i) := wdata
-          }
-        }
       }
     }
+  }
+
+  if (!params(BuildRoCC).isEmpty) {
+    val start = UInt(CSRs.roccbase)
+    val end = UInt(CSRs.roccbase + nRoccCSRs)
+    io.rocc.csrs.wdata := wdata
+    io.rocc.csrs.waddr := addr(log2Up(nRoccCSRs) - 1, 0)
+    io.rocc.csrs.wen := wen && addr >= start && addr < end
   }
 
   io.host.ipi_rep.ready := true

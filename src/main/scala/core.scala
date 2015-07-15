@@ -21,7 +21,7 @@ case object CoreDataBits extends Field[Int]
 case object CoreDCacheReqTagBits extends Field[Int]
 case object NCustomMRWCSRs extends Field[Int]
 case object NPTWs extends Field[Int]
-case object NRoCCCSRs extends Field[Int]
+case object NRoccCSRs extends Field[Int]
 
 abstract trait CoreParameters extends UsesParameters {
   val xLen = params(XLen)
@@ -34,7 +34,7 @@ abstract trait CoreParameters extends UsesParameters {
   val pgLevelBits = params(PgLevelBits)
   val asIdBits = params(ASIdBits)
   val nptws = params(NPTWs)
-  val nRoCCCSRs = params(NRoCCCSRs)
+  val nRoccCSRs = params(NRoccCSRs)
 
   val retireWidth = params(RetireWidth)
   val coreFetchWidth = params(FetchWidth)

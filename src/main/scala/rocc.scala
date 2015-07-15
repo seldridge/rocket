@@ -34,6 +34,14 @@ class RoCCResponse extends CoreBundle
   val data = Bits(width = xLen)
 }
 
+class RoCCCSRs extends CoreBundle
+{
+  val waddr = UInt(INPUT, log2Up(nRoccCSRs))
+  val wdata = UInt(INPUT, xLen)
+  val wen = Bool(INPUT)
+  val rdata = Vec.fill(nRoccCSRs) { UInt(OUTPUT, xLen) }
+}
+
 class RoCCInterface extends CoreBundle
 {
   private val nCores = params(HTIFNCores)
@@ -52,7 +60,7 @@ class RoCCInterface extends CoreBundle
   val dptw = new TLBPTWIO
   val pptw = new TLBPTWIO
   val exception = Bool(INPUT)
-  val csrs = Vec.fill(nRoCCCSRs) { Bits(INPUT, xLen) }
+  val csrs = new RoCCCSRs
   val net = new TileLinkNetworkIO
 }
 

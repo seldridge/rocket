@@ -44,6 +44,10 @@ class SStatus extends Bundle {
 }
 
 class MIP extends Bundle {
+  val mrip = Bool()
+  val hrip = Bool()
+  val srip = Bool()
+  val urip = Bool()
   val mtip = Bool()
   val htip = Bool()
   val stip = Bool()
@@ -132,8 +136,6 @@ class CSRFile extends CoreModule
   val reg_fflags = Reg(UInt(width = 5))
   val reg_frm = Reg(UInt(width = 3))
 
-  val irq_rocc = Bool(!params(BuildRoCC).isEmpty) && io.rocc.interrupt
-
   io.interrupt_cause := 0
   io.interrupt := io.interrupt_cause(xLen-1)
   val some_interrupt_pending = Bool(); some_interrupt_pending := false
@@ -151,7 +153,8 @@ class CSRFile extends CoreModule
   checkInterrupt(PRV_S, reg_mie.stip && reg_mip.stip, 1)
   checkInterrupt(PRV_M, reg_mie.mtip && reg_mip.mtip, 1)
   checkInterrupt(PRV_M, reg_fromhost != 0, 2)
-  checkInterrupt(PRV_M, irq_rocc, 3)
+  checkInterrupt(PRV_S, reg_mie.srip && reg_mip.srip, 3)
+  checkInterrupt(PRV_M, reg_mie.mrip && reg_mip.mrip, 3)
 
   val system_insn = io.rw.cmd === CSR.I
   val cpu_ren = io.rw.cmd != CSR.N && !system_insn
@@ -229,11 +232,13 @@ class CSRFile extends CoreModule
     read_sip := new MIP().fromBits(0)
     read_sip.ssip := reg_mip.ssip
     read_sip.stip := reg_mip.stip
+    read_sip.srip := reg_mip.srip
 
     val read_sie = new MIP
     read_sie := new MIP().fromBits(0)
     read_sie.ssip := reg_mie.ssip
     read_sie.stip := reg_mie.stip
+    read_sie.srip := reg_mie.srip
 
     read_mapping += CSRs.sstatus -> read_sstatus.toBits
     read_mapping += CSRs.sip -> read_sip.toBits
@@ -403,17 +408,21 @@ class CSRFile extends CoreModule
       if (params(UseVM)) {
         reg_mip.ssip := new_mip.ssip
         reg_mip.stip := new_mip.stip
+        reg_mip.srip := new_mip.srip
       }
       reg_mip.msip := new_mip.msip
+      reg_mip.mrip := new_mip.mrip
     }
     when (decoded_addr(CSRs.mie)) {
       val new_mie = new MIP().fromBits(wdata)
       if (params(UseVM)) {
         reg_mie.ssip := new_mie.ssip
         reg_mie.stip := new_mie.stip
+        reg_mie.srip := new_mie.srip
       }
       reg_mie.msip := new_mie.msip
       reg_mie.mtip := new_mie.mtip
+      reg_mie.mrip := new_mie.mrip
     }
     when (decoded_addr(CSRs.fflags))   { reg_fflags := wdata }
     when (decoded_addr(CSRs.frm))      { reg_frm := wdata }
@@ -441,11 +450,13 @@ class CSRFile extends CoreModule
       when (decoded_addr(CSRs.sip)) {
         val new_sip = new MIP().fromBits(wdata)
         reg_mip.ssip := new_sip.ssip
+        reg_mip.srip := new_sip.srip
       }
       when (decoded_addr(CSRs.sie)) {
         val new_sie = new MIP().fromBits(wdata)
         reg_mie.ssip := new_sie.ssip
         reg_mie.stip := new_sie.stip
+        reg_mie.srip := new_sie.srip
       }
       when (decoded_addr(CSRs.sscratch)) { reg_sscratch := wdata }
       when (decoded_addr(CSRs.sptbr))    { reg_sptbr := Cat(wdata(paddrBits-1, pgIdxBits), Bits(0, pgIdxBits)) }
@@ -466,6 +477,8 @@ class CSRFile extends CoreModule
     io.rocc.csrs.wdata := wdata
     io.rocc.csrs.waddr := addr(log2Up(nRoccCSRs) - 1, 0)
     io.rocc.csrs.wen := wen && addr >= start && addr < end
+
+    when (io.rocc.interrupt) { reg_mip.mrip := Bool(true) }
   }
 
   io.host.ipi_rep.ready := true

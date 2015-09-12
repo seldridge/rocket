@@ -502,7 +502,8 @@ class Rocket extends CoreModule
     val wfd = wb_ctrl.wfd
     val wxd = wb_ctrl.wxd
     val has_data = wb_wen && !wb_set_sboard
-    val priv = csr.io.status.prv
+    //note: for eret, we lie and print the upcoming priv level to match spike's errorenous output
+    val priv = Mux(csr.io.eret, csr.io.status.prv1, csr.io.status.prv)
 
     when (wb_valid) {
       when (wfd) {

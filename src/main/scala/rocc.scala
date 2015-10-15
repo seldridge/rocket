@@ -31,14 +31,14 @@ class RoCCResponse(implicit p: Parameters) extends CoreBundle()(p) {
   val data = Bits(width = xLen)
 }
 
-class RoCCInterface(implicit p: Parameters) extends Bundle {
+class RoCCInterface(implicit p: Parameters) extends CoreBundle()(p) {
   val cmd = Decoupled(new RoCCCommand).flip
   val resp = Decoupled(new RoCCResponse)
   val mem = new HellaCacheIO()(p.alterPartial({ case CacheName => "L1D" }))
   val busy = Bool(OUTPUT)
   val s = Bool(INPUT)
   val interrupt = Bool(OUTPUT)
-  
+
   // These should be handled differently, eventually
   val imem = new ClientUncachedTileLinkIO
   val dmem = new ClientUncachedTileLinkIO
